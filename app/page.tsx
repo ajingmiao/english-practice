@@ -107,6 +107,7 @@ export default function EnglishPractice() {
     errors: { index: number; word: string; correctWord: string }[]
   }>({ correct: false, errors: [] })
 
+
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
   const checkButtonRef = useRef<HTMLButtonElement>(null)
 
