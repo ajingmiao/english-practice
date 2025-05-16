@@ -5,8 +5,24 @@ import type React from "react"
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Volume2, CheckCircle, AlertCircle } from "lucide-react"
+import { Volume2, CheckCircle, AlertCircle, RotateCcw } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
+import { SentencePractice } from "@/components/sentence-practice"
+import { WordLearning } from "@/components/word-learning"
+import { ReviewSystem } from "@/components/review-system"
+import {
+  UserProgress,
+  WordProgress,
+  SentenceProgress,
+  initUserProgress,
+  initWordProgress,
+  initSentenceProgress,
+  updateWordProgress,
+  updateSentenceProgress,
+  saveProgress,
+  loadProgress
+} from "@/utils/spaced-repetition"
+import { wordDictionary } from "@/utils/word-dictionary"
 
 // Exercise data
 const exerciseData = [
@@ -94,419 +110,285 @@ const exerciseData = [
 
 export default function EnglishPractice() {
   const { toast } = useToast()
+  
+  // 应用状态
+  const [mode, setMode] = useState<'sentence' | 'word' | 'review'>('sentence')
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0)
-  const [currentExercise, setCurrentExercise] = useState(exerciseData[0])
   const [currentStep, setCurrentStep] = useState(0)
-  const [userInput, setUserInput] = useState("")
-  const [wordInputs, setWordInputs] = useState<string[]>([])
-  const [currentWordIndex, setCurrentWordIndex] = useState(0)
-  const [isChecking, setIsChecking] = useState(false)
-  const [allCorrect, setAllCorrect] = useState(false)
-  const [feedback, setFeedback] = useState<{
-    correct: boolean
-    errors: { index: number; word: string; correctWord: string }[]
-  }>({ correct: false, errors: [] })
-
-
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([])
-  const checkButtonRef = useRef<HTMLButtonElement>(null)
-
-  // Split the current sentence into words
-  const currentSentence = currentExercise.sentences[currentStep].english
-  const currentWords = currentSentence.split(" ")
-
+  
+  // 单词学习状态
+  const [currentLearningWord, setCurrentLearningWord] = useState('')
+  const [errorWords, setErrorWords] = useState<string[]>([])
+  const [errorIndices, setErrorIndices] = useState<number[]>([])
+  
+  // 进度跟踪
+  const [userProgress, setUserProgress] = useState<UserProgress>(initUserProgress())
+  
+  // 初始化当前练习
+  const currentExercise = exerciseData[currentExerciseIndex]
+  const currentSentence = currentExercise?.sentences[currentStep]?.english || ''
+  
+  // 从本地存储加载进度
   useEffect(() => {
-    // Reset state when changing steps
-    setUserInput("")
-    setWordInputs(Array(currentWords.length).fill(""))
-    setCurrentWordIndex(0)
-    setIsChecking(false)
-    setAllCorrect(false)
-    setFeedback({ correct: false, errors: [] })
-
-    // Focus on the first input field after a short delay to ensure the DOM is updated
-    setTimeout(() => {
-      if (inputRefs.current[0]) {
-        inputRefs.current[0].focus()
-      }
-    }, 100)
-  }, [currentStep, currentWords.length, currentExercise])
-
-  // Function to play audio of the current sentence
-  const playAudio = () => {
-    const utterance = new SpeechSynthesisUtterance(currentSentence)
-    utterance.lang = "en-US"
-    utterance.rate = 0.8
-    window.speechSynthesis.speak(utterance)
+    const loadedProgress = loadProgress()
+    if (loadedProgress) {
+      setUserProgress(loadedProgress)
+      setCurrentExerciseIndex(loadedProgress.currentExerciseIndex)
+      setCurrentStep(loadedProgress.currentStep)
+    }
+  }, [])
+  
+  // 保存进度到本地存储
+  const saveUserProgress = (updatedProgress: UserProgress) => {
+    setUserProgress(updatedProgress)
+    saveProgress(updatedProgress)
   }
-
-  // Auto-play audio when step changes
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      playAudio()
-    }, 500)
-    return () => clearTimeout(timer)
-  }, [currentStep])
-
-  // Validate all inputs and update allCorrect state
-  const validateInputs = () => {
-    for (let i = 0; i < currentWords.length; i++) {
-      const input = wordInputs[i]
-      const correctWord = currentWords[i]
-
-      if (!input || !correctWord || input.toLowerCase() !== correctWord.toLowerCase()) {
-        return false
-      }
+  
+  // 处理句子练习完成
+  const handleSentenceComplete = (isCorrect: boolean, newErrorWords: string[], newErrorIndices: number[]) => {
+    // 更新句子进度
+    const updatedProgress = { ...userProgress }
+    const sentenceKey = currentSentence
+    
+    if (!updatedProgress.sentences[sentenceKey]) {
+      updatedProgress.sentences[sentenceKey] = initSentenceProgress(sentenceKey)
     }
-    return true
-  }
-
-  // Effect to check if all inputs are correct after user makes changes
-  useEffect(() => {
-    if (isChecking) {
-      const isAllCorrect = validateInputs()
-      setAllCorrect(isAllCorrect)
-
-      // Update feedback if all inputs are now correct
-      if (isAllCorrect && feedback.errors.length > 0) {
-        setFeedback({
-          correct: true,
-          errors: [],
-        })
-      }
-    }
-  }, [wordInputs, isChecking])
-
-  // Handle input for individual words
-  const handleWordInput = (index: number, value: string) => {
-    const newWordInputs = [...wordInputs]
-    newWordInputs[index] = value
-    setWordInputs(newWordInputs)
-
-    // Only auto-jump if space is detected or the word is complete (not just a single character)
-    if (value.endsWith(" ") || (value.length >= currentWords[index].length && value.length > 1)) {
-      const cleanValue = value.trim()
-      newWordInputs[index] = cleanValue
-      setWordInputs(newWordInputs)
-
-      // If this is the last word and the length matches or exceeds the correct word
-      if (index === currentWords.length - 1 && cleanValue.length >= currentWords[index].length) {
-        // Focus on the "Check Answer" button if not in checking mode, otherwise check if all correct
-        if (!isChecking) {
-          setTimeout(() => checkButtonRef.current?.focus(), 100)
-        } else {
-          // If we're already in checking mode, validate the inputs
-          const isAllCorrect = validateInputs()
-          if (isAllCorrect) {
-            setAllCorrect(true)
-            setFeedback({
-              correct: true,
-              errors: [],
-            })
-          }
-        }
-      } else if (index < currentWords.length - 1) {
-        // Otherwise, move to the next word input
-        setCurrentWordIndex(index + 1)
-        // Use setTimeout to ensure the current keystroke is processed before changing focus
-        setTimeout(() => {
-          inputRefs.current[index + 1]?.focus()
-        }, 10)
-      }
-    }
-  }
-
-  // Handle backspace key in empty input to go to previous input
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    // 防止按键事件传播到其他输入框
-    e.stopPropagation()
-
-    // 如果按下的是回车键，执行检查答案或者在已经检查且修改正确后继续检查
-    if (e.key === "Enter") {
-      e.preventDefault()
-      if (!isChecking) {
-        // 如果还没有检查，则执行检查
-        checkAnswer()
-      } else {
-        // 如果已经在检查状态，检查是否所有输入都正确
-        const isAllCorrect = validateInputs()
-        if (isAllCorrect) {
-          // 如果所有输入都正确，设置allCorrect为true并更新反馈
-          setAllCorrect(true)
-          setFeedback({
-            correct: true,
-            errors: [],
-          })
-          // 自动进入下一步
-          nextStep()
-        } else {
-          // 如果还有错误，重新检查并更新错误信息
-          checkAnswer()
-        }
-      }
-      return
-    }
-
-    // 如果按下的是后退键（Backspace）且当前输入框为空
-    if (e.key === "Backspace" && (!wordInputs[index] || wordInputs[index] === "")) {
-      // 如果不是第一个输入框，则跳转到上一个输入框
-      if (index > 0) {
-        e.preventDefault() // 阻止默认的后退键行为
-        setCurrentWordIndex(index - 1)
-
-        // 聚焦到上一个输入框
-        setTimeout(() => {
-          const prevInput = inputRefs.current[index - 1]
-          if (prevInput) {
-            prevInput.focus()
-
-            // 将光标放在文本末尾
-            const length = wordInputs[index - 1]?.length || 0
-            prevInput.setSelectionRange(length, length)
-          }
-        }, 10)
-      }
-    }
-  }
-
-  // Check the user's answer
-  const checkAnswer = () => {
-    setIsChecking(true)
-
-    const errorIndices: number[] = []
-    const errors = wordInputs
-      .map((input, index) => {
-        // Add null checks before calling toLowerCase()
-        if (input && currentWords[index]) {
-          if (input.toLowerCase() !== currentWords[index].toLowerCase()) {
-            errorIndices.push(index)
-            return {
-              index,
-              word: input,
-              correctWord: currentWords[index],
-            }
-          }
-        } else {
-          // Handle case where input or currentWords[index] is undefined
-          errorIndices.push(index)
-          return {
-            index,
-            word: input || "",
-            correctWord: currentWords[index] || "",
-          }
-        }
-        return null
-      })
-      .filter(Boolean) as { index: number; word: string; correctWord: string }[]
-
-    const isCorrect = errors.length === 0
-    setAllCorrect(isCorrect)
-
-    setFeedback({
-      correct: isCorrect,
-      errors,
-    })
-
-    // 如果有错误，清空错误的输入内容并将焦点定位到第一个错误
-    if (!isCorrect && errorIndices.length > 0) {
-      // 创建新的输入数组，清空错误的输入
-      const newWordInputs = [...wordInputs]
-      errorIndices.forEach((index) => {
-        newWordInputs[index] = ""
-      })
-      setWordInputs(newWordInputs)
-
-      // 将焦点设置到第一个错误的输入框
-      const firstErrorIndex = errorIndices[0]
-      setCurrentWordIndex(firstErrorIndex)
-
-      // 使用setTimeout确保DOM更新后再设置焦点
-      setTimeout(() => {
-        if (inputRefs.current[firstErrorIndex]) {
-          inputRefs.current[firstErrorIndex].focus()
-        }
-      }, 50)
-    }
-  }
-
-  // Move to next step
-  const nextStep = () => {
-    // 只有当所有单词都正确时才允许进入下一步
-    if (!allCorrect) {
-      toast({
-        title: "请先纠正错误",
-        description: "在进入下一句之前，请确保当前句子中的所有单词都正确。",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (currentStep < currentExercise.sentences.length - 1) {
-      // 如果当前练习组还有下一步，进入下一步
-      setCurrentStep(currentStep + 1)
+    
+    updatedProgress.sentences[sentenceKey] = updateSentenceProgress(
+      updatedProgress.sentences[sentenceKey],
+      isCorrect,
+      newErrorWords
+    )
+    
+    // 如果正确，进入下一步
+    if (isCorrect) {
+      moveToNextStep(updatedProgress)
     } else {
-      // 如果当前练习组已完成，检查是否还有下一组练习
+      // 如果错误，进入单词学习模式
+      setErrorWords(newErrorWords)
+      setErrorIndices(newErrorIndices)
+      
+      // 开始学习第一个错误的单词
+      if (newErrorWords.length > 0) {
+        setCurrentLearningWord(newErrorWords[0])
+        setMode('word')
+      }
+      
+      saveUserProgress(updatedProgress)
+    }
+  }
+  
+  // 处理单词学习完成
+  const handleWordComplete = (isCorrect: boolean) => {
+    // 更新单词进度
+    const updatedProgress = { ...userProgress }
+    const wordKey = currentLearningWord
+    
+    if (!updatedProgress.words[wordKey]) {
+      updatedProgress.words[wordKey] = initWordProgress(wordKey)
+    }
+    
+    updatedProgress.words[wordKey] = updateWordProgress(
+      updatedProgress.words[wordKey],
+      isCorrect
+    )
+    
+    saveUserProgress(updatedProgress)
+    
+    // 移除已学习的单词
+    const remainingWords = errorWords.filter(word => word !== currentLearningWord)
+    
+    if (remainingWords.length > 0) {
+      // 继续学习下一个单词
+      setErrorWords(remainingWords)
+      setCurrentLearningWord(remainingWords[0])
+    } else {
+      // 所有单词学习完成，返回句子练习
+      toast({
+        title: "单词学习完成",
+        description: "现在让我们再次尝试完成整个句子。",
+        variant: "default",
+      })
+      setMode('sentence')
+    }
+  }
+  
+  // 处理复习模式
+  const handleStartWordReview = (word: string) => {
+    setCurrentLearningWord(word)
+    setMode('word')
+    
+    // 标记为正在复习
+    const updatedProgress = { ...userProgress }
+    if (updatedProgress.words[word]) {
+      updatedProgress.words[word].inReview = true
+      saveUserProgress(updatedProgress)
+    }
+  }
+  
+  const handleStartSentenceReview = (sentence: string) => {
+    // 找到对应的练习和步骤
+    for (let i = 0; i < exerciseData.length; i++) {
+      for (let j = 0; j < exerciseData[i].sentences.length; j++) {
+        if (exerciseData[i].sentences[j].english === sentence) {
+          setCurrentExerciseIndex(i)
+          setCurrentStep(j)
+          setMode('sentence')
+          
+          // 标记为正在复习
+          const updatedProgress = { ...userProgress }
+          if (updatedProgress.sentences[sentence]) {
+            updatedProgress.sentences[sentence].inReview = true
+            saveUserProgress(updatedProgress)
+          }
+          
+          return
+        }
+      }
+    }
+  }
+  
+  // 跳过复习
+  const handleSkipReview = () => {
+    setMode('sentence')
+  }
+  
+  // 移动到下一步
+  const moveToNextStep = (progress: UserProgress) => {
+    let updatedProgress = { ...progress }
+    
+    if (currentStep < currentExercise.sentences.length - 1) {
+      // 进入当前练习的下一句
+      setCurrentStep(currentStep + 1)
+      updatedProgress.currentStep = currentStep + 1
+    } else {
+      // 当前练习组完成
       if (currentExerciseIndex < exerciseData.length - 1) {
-        // 还有下一组练习，切换到下一组
+        // 进入下一组练习
         const nextExerciseIndex = currentExerciseIndex + 1
         setCurrentExerciseIndex(nextExerciseIndex)
-        setCurrentExercise(exerciseData[nextExerciseIndex])
-        setCurrentStep(0) // 重置到新练习组的第一步
+        setCurrentStep(0)
+        updatedProgress.currentExerciseIndex = nextExerciseIndex
+        updatedProgress.currentStep = 0
+        
         toast({
           title: "已完成当前练习组",
           description: `现在开始练习单词 "${exerciseData[nextExerciseIndex].word}" (${exerciseData[nextExerciseIndex].translation})`,
           variant: "default",
         })
       } else {
-        // 所有练习组已完成
-        alert("恭喜！你已完成所有练习。")
+        // 所有练习完成
+        toast({
+          title: "恭喜！",
+          description: "你已完成所有练习。你可以继续复习之前的内容。",
+          variant: "default",
+        })
       }
     }
+    
+    saveUserProgress(updatedProgress)
   }
-
-  // Generate detailed error feedback
-  const getDetailedFeedback = (userWord: string, correctWord: string) => {
-    let feedback = ""
-
-    // Compare each character
-    for (let i = 0; i < Math.max(userWord.length, correctWord.length); i++) {
-      if (i >= userWord.length) {
-        feedback += `缺少字母 "${correctWord.slice(i)}"`
-        break
-      } else if (i >= correctWord.length) {
-        feedback += `多余字母 "${userWord.slice(i)}"`
-        break
-      } else if (userWord[i] !== correctWord[i]) {
-        feedback += `第 ${i + 1} 个字母应为 "${correctWord[i]}" 而不是 "${userWord[i]}"`
-        break
+  
+  // 获取单词的中文翻译
+  const getWordTranslation = (word: string): string | undefined => {
+    const normalizedWord = word.toLowerCase().trim();
+    
+    // 首先在词典中查找
+    if (wordDictionary[normalizedWord]) {
+      return wordDictionary[normalizedWord];
+    }
+    
+    // 处理单词的变形（如复数形式）
+    if (normalizedWord.endsWith('s') && wordDictionary[normalizedWord.slice(0, -1)]) {
+      return wordDictionary[normalizedWord.slice(0, -1)];
+    }
+    
+    if (normalizedWord.endsWith('ing') && wordDictionary[normalizedWord.slice(0, -3)]) {
+      return wordDictionary[normalizedWord.slice(0, -3)] + '（进行中）';
+    }
+    
+    if (normalizedWord.endsWith('ed') && wordDictionary[normalizedWord.slice(0, -2)]) {
+      return wordDictionary[normalizedWord.slice(0, -2)] + '（过去式）';
+    }
+    
+    // 如果词典中找不到，在 exerciseData 中查找单词
+    for (const exercise of exerciseData) {
+      if (exercise.word.toLowerCase() === normalizedWord) {
+        return exercise.translation;
       }
     }
-
-    return feedback || "拼写错误"
+    
+    // 如果在主题单词中找不到，尝试在句子中查找
+    for (const exercise of exerciseData) {
+      for (const sentence of exercise.sentences) {
+        const words = sentence.english.toLowerCase().split(/\s+/);
+        if (words.some(w => w.replace(/[.,!?]/g, '') === normalizedWord)) {
+          return exercise.translation + '（相关主题）'; // 返回相关主题的翻译
+        }
+      }
+    }
+    
+    return '未知单词'; // 如果找不到翻译，返回“未知单词”
+  };
+  
+  // 重置所有进度
+  const resetProgress = () => {
+    if (confirm("确定要重置所有学习进度吗？这将删除所有记录的学习数据。")) {
+      const newProgress = initUserProgress()
+      saveUserProgress(newProgress)
+      setCurrentExerciseIndex(0)
+      setCurrentStep(0)
+      setMode('sentence')
+      
+      toast({
+        title: "进度已重置",
+        description: "所有学习进度已被重置。",
+        variant: "default",
+      })
+    }
   }
-
+  
   return (
     <div className="container mx-auto py-8 max-w-4xl">
-      <Card className="w-full">
-        <CardHeader>
-          <CardTitle className="flex justify-between items-center text-2xl">
-            英语句子构建练习
-            <Button variant="ghost" size="icon" onClick={playAudio} aria-label="播放音频">
-              <Volume2 className="h-6 w-6" />
-            </Button>
-          </CardTitle>
-          <CardDescription className="text-lg">
-            从单词 "{currentExercise.word}" ({currentExercise.translation}) 开始构建句子
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-6">
-            <p className="text-xl font-medium mb-3">
-              步骤 {currentStep + 1}/{currentExercise.sentences.length}
-            </p>
-            <p className="text-muted-foreground mb-6 text-lg">{currentExercise.sentences[currentStep].chinese}</p>
-
-            <div className="flex flex-wrap gap-4 mb-10">
-              {currentWords.map((word, index) => (
-                <div key={index} className="relative">
-                  <input
-                    ref={(el) => (inputRefs.current[index] = el)}
-                    value={wordInputs[index] || ""}
-                    onChange={(e) => handleWordInput(index, e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(index, e)}
-                    className={`
-                    bg-transparent 
-                    border-0 
-                    border-b 
-                    focus:ring-0 
-                    focus:outline-none 
-                    px-2 
-                    py-2 
-                    text-center
-                    ${isChecking
-                        ? (
-                          wordInputs[index] &&
-                          currentWords[index] &&
-                          wordInputs[index].toLowerCase() === currentWords[index].toLowerCase()
-                        )
-                          ? "border-green-500 text-green-600"
-                          : "border-red-500 text-red-600"
-                        : "border-gray-300 focus:border-primary"
-                      }
-                  `}
-                    style={{ width: `${Math.max(word.length * 10, 60)}px` }} // 控制宽度在 60px 起步
-                    placeholder=""
-                    autoFocus={index === currentWordIndex}
-                    onFocus={() => setCurrentWordIndex(index)}
-                  />
-                  {isChecking &&
-                    (wordInputs[index] === undefined ||
-                      currentWords[index] === undefined ||
-                      wordInputs[index].toLowerCase() !== currentWords[index].toLowerCase()) && (
-                      <span className="absolute -bottom-6 left-0 text-xs text-red-500 whitespace-nowrap">
-                        {currentWords[index]}
-                      </span>
-                    )}
-                </div>
-              ))}
-            </div>
-
-            {isChecking && (
-              <div className="mt-6 p-4 rounded-md bg-muted">
-                <div className="flex items-center gap-3 mb-3 text-lg">
-                  {feedback.correct ? (
-                    <>
-                      <CheckCircle className="h-6 w-6 text-green-500" />
-                      <span className="font-medium text-green-600 text-lg">正确！</span>
-                    </>
-                  ) : (
-                    <>
-                      <AlertCircle className="h-6 w-6 text-red-500" />
-                      <span className="font-medium text-red-600 text-lg">需要修正</span>
-                    </>
-                  )}
-                </div>
-
-                {feedback.errors.length > 0 && (
-                  <ul className="list-disc pl-6 space-y-2 text-base">
-                    {feedback.errors.map((error, i) => (
-                      <li key={i}>
-                        <span className="font-medium">单词 {error.index + 1}:</span>{" "}
-                        {getDetailedFeedback(error.word, error.correctWord)}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-          </div>
-        </CardContent>
-        <CardFooter className="flex justify-between pt-6">
-          <Button variant="outline" onClick={playAudio} className="text-base px-6 py-5">
-            重新播放
-          </Button>
-
-          <Button
-            ref={checkButtonRef}
-            onClick={() => {
-              if (!isChecking) {
-                checkAnswer()
-              } else {
-                nextStep()
-              }
-            }}
-            disabled={isChecking && !allCorrect}
-            className={`text-base px-6 py-5 ${isChecking && !allCorrect ? "opacity-50 cursor-not-allowed" : ""
-              }`}
-          >
-            {!isChecking
-              ? "检查答案"
-              : currentStep < currentExercise.sentences.length - 1
-                ? "下一步"
-                : "完成"}
-          </Button>
-        </CardFooter>
-      </Card>
+      {/* 复习系统 */}
+      {mode === 'sentence' && (
+        <ReviewSystem
+          wordProgress={userProgress.words}
+          sentenceProgress={userProgress.sentences}
+          onStartWordReview={handleStartWordReview}
+          onStartSentenceReview={handleStartSentenceReview}
+          onSkipReview={handleSkipReview}
+        />
+      )}
+      
+      {/* 重置进度按钮 */}
+      <div className="flex justify-end mb-4">
+        <Button variant="outline" size="sm" onClick={resetProgress} className="flex items-center gap-1">
+          <RotateCcw className="h-4 w-4" />
+          重置进度
+        </Button>
+      </div>
+      
+      {/* 句子练习模式 */}
+      {mode === 'sentence' && currentExercise && (
+        <SentencePractice
+          exerciseData={exerciseData}
+          currentExerciseIndex={currentExerciseIndex}
+          currentStep={currentStep}
+          onComplete={handleSentenceComplete}
+          sentenceProgress={userProgress.sentences[currentSentence]}
+        />
+      )}
+      
+      {/* 单词学习模式 */}
+      {mode === 'word' && currentLearningWord && (
+        <WordLearning
+          word={currentLearningWord}
+          translation={getWordTranslation(currentLearningWord)}
+          onComplete={handleWordComplete}
+          wordProgress={userProgress.words[currentLearningWord]}
+        />
+      )}
     </div>
   )
 }
