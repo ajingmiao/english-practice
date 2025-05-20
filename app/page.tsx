@@ -93,7 +93,7 @@ const exerciseData = [
       { english: "The door", chinese: "这扇门" },
       { english: "The door is open", chinese: "这扇门开着" },
       { english: "The door is open now", chinese: "这扇门现在是开着的" },
-      { english: "The door is open now, and a cat is walking out", chinese: "门现在开着，一只猫正走出来" },
+      { english: "The door is open now and a cat is walking out", chinese: "门现在开着，一只猫正走出来" },
     ],
   },
   {
@@ -103,7 +103,7 @@ const exerciseData = [
       { english: "I am free", chinese: "我是自由的" },
       { english: "I am free today", chinese: "我今天有空/我今天自由" },
       { english: "I am free today to play outside", chinese: "我今天有空可以出去玩" },
-      { english: "I am free today, so I will play outside with my friends", chinese: "我今天有空，所以我会和朋友一起出去玩" },
+      { english: "I am free today so I will play outside with my friends", chinese: "我今天有空，所以我会和朋友一起出去玩" },
     ],
   },
 ]
@@ -145,7 +145,7 @@ export default function EnglishPractice() {
   }
   
   // 处理句子练习完成
-  const handleSentenceComplete = (isCorrect: boolean, newErrorWords: string[], newErrorIndices: number[]) => {
+  const handleSentenceComplete = (isCorrect: boolean, newErrorWords: string[], newErrorIndices: number[], usedHint: boolean = false) => {
     // 更新句子进度
     const updatedProgress = { ...userProgress }
     const sentenceKey = currentSentence
@@ -160,8 +160,28 @@ export default function EnglishPractice() {
       newErrorWords
     )
     
-    // 如果正确，进入下一步
+    // 如果正确，进入下一步并增加积分（如果没有使用提示）
     if (isCorrect) {
+      // 只有在没有使用提示的情况下才增加积分
+      if (!usedHint) {
+        // 增加积分
+        updatedProgress.points = (updatedProgress.points || 0) + 1
+        
+        // 显示积分增加提示
+        toast({
+          title: "恭喜获得积分",
+          description: `句子正确，积分 +1！当前积分：${updatedProgress.points}`,
+          variant: "default",
+        })
+      } else {
+        // 如果使用了提示，显示不计入积分的提示
+        toast({
+          title: "句子正确",
+          description: "由于使用了语音提示，本句子不计入积分",
+          variant: "default",
+        })
+      }
+      
       moveToNextStep(updatedProgress)
     } else {
       // 如果错误，进入单词学习模式
@@ -394,7 +414,13 @@ export default function EnglishPractice() {
       )}
       
       {/* 重置进度按钮 */}
-      <div className="flex justify-end mb-4">
+      {/* 积分和重置按钮行 */}
+      <div className="flex justify-between items-center mb-4">
+        <div className="bg-primary/10 px-4 py-2 rounded-md flex items-center">
+          <span className="font-medium text-primary mr-2">积分：</span>
+          <span className="text-lg font-bold">{userProgress.points || 0}</span>
+        </div>
+        
         <Button variant="outline" size="sm" onClick={resetProgress} className="flex items-center gap-1">
           <RotateCcw className="h-4 w-4" />
           重置进度

@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Volume2, CheckCircle, AlertCircle } from "lucide-react"
+import { Volume2, CheckCircle, AlertCircle, HelpCircle } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { SentenceProgress, updateSentenceProgress } from "@/utils/spaced-repetition"
 
@@ -14,7 +14,8 @@ interface SentencePracticeProps {
   onComplete: (
     isCorrect: boolean, 
     errorWords: string[], 
-    errorIndices: number[]
+    errorIndices: number[],
+    usedHint: boolean // 添加是否使用了提示的标记
   ) => void;
   sentenceProgress?: SentenceProgress;
 }
@@ -37,6 +38,8 @@ export function SentencePractice({
     correct: boolean
     errors: { index: number; word: string; correctWord: string }[]
   }>({ correct: false, errors: [] })
+  const [showHint, setShowHint] = useState(false) // 是否显示当前空的提示
+  const [usedHint, setUsedHint] = useState(false) // 是否使用了语音提示
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
   const checkButtonRef = useRef<HTMLButtonElement>(null)
@@ -53,6 +56,7 @@ export function SentencePractice({
     setIsChecking(false)
     setAllCorrect(false)
     setFeedback({ correct: false, errors: [] })
+    setUsedHint(false) // 重置使用提示的状态
 
     // Focus on the first input field after a short delay to ensure the DOM is updated
     setTimeout(() => {
@@ -68,6 +72,35 @@ export function SentencePractice({
     utterance.lang = "en-US"
     utterance.rate = 0.8
     window.speechSynthesis.speak(utterance)
+  }
+  
+  // 播放当前空应填单词的语音
+  const playCurrentWordHint = () => {
+    if (currentWordIndex < currentWords.length) {
+      // 标记已使用提示
+      setUsedHint(true);
+      
+      // 显示提示消息，说明使用提示后不记入积分
+      toast({
+        title: "已使用语音提示",
+        description: "本句子将不计入积分",
+        variant: "default",
+      });
+      
+      const currentWord = currentWords[currentWordIndex];
+      const utterance = new SpeechSynthesisUtterance(currentWord);
+      utterance.lang = "en-US";
+      utterance.rate = 0.7; // 稍微放慢速度，更清晰
+      window.speechSynthesis.speak(utterance);
+      
+      // 播放两次，使用户能更清晰地听到
+      setTimeout(() => {
+        const repeatUtterance = new SpeechSynthesisUtterance(currentWord);
+        repeatUtterance.lang = "en-US";
+        repeatUtterance.rate = 0.6; // 第二次播放更慢
+        window.speechSynthesis.speak(repeatUtterance);
+      }, 1000);
+    }
   }
 
   // Auto-play audio when step changes
@@ -109,7 +142,7 @@ export function SentencePractice({
         
         // 4秒后自动进入下一步
         setTimeout(() => {
-          onComplete(true, [], [])
+          onComplete(true, [], [], usedHint)
           setSuccessDelay(false)
         }, 4000)
       }
@@ -182,9 +215,7 @@ export function SentencePractice({
           })
           
           // 通知父组件完成
-          const errorWords: string[] = []
-          const errorIndices: number[] = []
-          onComplete(true, errorWords, errorIndices)
+          onComplete(true, [], [], usedHint)
         } else {
           // 如果还有错误，重新检查并更新错误信息
           checkAnswer()
@@ -276,11 +307,11 @@ export function SentencePractice({
 
     // 通知父组件检查结果
     if (isCorrect) {
-      onComplete(true, [], [])
+      onComplete(true, [], [], usedHint)
     } else {
       // 获取错误的单词列表
       const errorWords = errors.map(err => err.correctWord)
-      onComplete(false, errorWords, errorIndices)
+      onComplete(false, errorWords, errorIndices, usedHint)
     }
   }
 
@@ -374,6 +405,7 @@ export function SentencePractice({
                     autoFocus={index === currentWordIndex}
                     onFocus={() => setCurrentWordIndex(index)}
                   />
+
                   {isChecking &&
                     (wordInputs[index] === undefined ||
                       currentWords[index] === undefined ||
@@ -425,9 +457,20 @@ export function SentencePractice({
         </div>
       </CardContent>
       <CardFooter className="flex justify-between pt-6">
-        <Button variant="outline" onClick={playAudio} className="text-base px-6 py-5">
-          重新播放
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={playAudio} className="text-base px-4 py-5">
+            重新播放
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={playCurrentWordHint} 
+            className="text-base px-4 py-5 flex items-center gap-1"
+            disabled={isChecking || allCorrect}
+          >
+            <HelpCircle className="h-4 w-4" />
+            语音提示
+          </Button>
+        </div>
 
         <Button
           ref={checkButtonRef}
@@ -440,12 +483,12 @@ export function SentencePractice({
               
               // 4秒后自动进入下一步
               setTimeout(() => {
-                onComplete(true, [], [])
+                onComplete(true, [], [], usedHint)
                 setSuccessDelay(false)
               }, 4000)
             } else if (allCorrect && successDelay) {
               // 如果已经在延迟状态，用户可以手动加速进入下一步
-              onComplete(true, [], [])
+              onComplete(true, [], [], usedHint)
               setSuccessDelay(false)
             } else {
               // 如果答案不正确，允许重新检查

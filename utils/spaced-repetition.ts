@@ -30,6 +30,7 @@ export interface UserProgress {
   sentences: Record<string, SentenceProgress>;
   currentExerciseIndex: number;
   currentStep: number;
+  points: number; // 用户积分
 }
 
 // Initialize progress for a new word
@@ -66,6 +67,7 @@ export function initUserProgress(): UserProgress {
     sentences: {},
     currentExerciseIndex: 0,
     currentStep: 0,
+    points: 0, // 初始积分为0
   };
 }
 
