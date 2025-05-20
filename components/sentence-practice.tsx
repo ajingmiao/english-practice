@@ -107,11 +107,11 @@ export function SentencePractice({
         // 当用户修改后答案正确，自动进入成功延迟状态
         setSuccessDelay(true)
         
-        // 2秒后自动进入下一步
+        // 4秒后自动进入下一步
         setTimeout(() => {
           onComplete(true, [], [])
           setSuccessDelay(false)
-        }, 2000)
+        }, 4000)
       }
     }
   }, [wordInputs, isChecking])
@@ -130,10 +130,13 @@ export function SentencePractice({
 
       // If this is the last word and the length matches or exceeds the correct word
       if (index === currentWords.length - 1 && cleanValue.length >= currentWords[index].length) {
-        // Focus on the "Check Answer" button if not in checking mode, otherwise check if all correct
-        if (!isChecking) {
+        // 检查当前单词是否正确
+        const isCurrentWordCorrect = cleanValue.toLowerCase() === currentWords[index].toLowerCase();
+        
+        // 如果当前单词正确，且不在检查模式，则焦点移到检查按钮
+        if (isCurrentWordCorrect && !isChecking) {
           setTimeout(() => checkButtonRef.current?.focus(), 100)
-        } else {
+        } else if (isChecking) {
           // If we're already in checking mode, validate the inputs
           const isAllCorrect = validateInputs()
           if (isAllCorrect) {
@@ -144,6 +147,7 @@ export function SentencePractice({
             })
           }
         }
+        // 如果当前单词不正确，焦点保持在当前输入框，不做任何操作
       } else if (index < currentWords.length - 1) {
         // Otherwise, move to the next word input
         setCurrentWordIndex(index + 1)
@@ -327,54 +331,61 @@ export function SentencePractice({
           </p>
           <p className="text-muted-foreground mb-6 text-lg">{currentExercise.sentences[currentStep].chinese}</p>
 
-          <div className="flex flex-wrap gap-4 mb-10">
-            {currentWords.map((word: string, index: number) => (
-              <div key={index} className="relative">
-                <input
-                  ref={(el: HTMLInputElement | null) => {
-                    if (inputRefs.current) {
-                      inputRefs.current[index] = el;
+          {/* 当答案全部正确时，隐藏输入框，显示完整句子 */}
+          {isChecking && allCorrect ? (
+            <div className="flex flex-wrap gap-4 mb-10 justify-center">
+              <p className="text-xl font-bold text-green-600">{currentSentence}</p>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-4 mb-10">
+              {currentWords.map((word: string, index: number) => (
+                <div key={index} className="relative">
+                  <input
+                    ref={(el: HTMLInputElement | null) => {
+                      if (inputRefs.current) {
+                        inputRefs.current[index] = el;
+                      }
+                    }}
+                    value={wordInputs[index] || ""}
+                    onChange={(e) => handleWordInput(index, e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(index, e)}
+                    className={`
+                    bg-transparent 
+                    border-0 
+                    border-b 
+                    focus:ring-0 
+                    focus:outline-none 
+                    px-2 
+                    py-2 
+                    text-center
+                    ${(
+                      wordInputs[index] &&
+                      currentWords[index] &&
+                      wordInputs[index].toLowerCase() === currentWords[index].toLowerCase()
+                    )
+                      ? "border-green-500 text-green-600"
+                      : isChecking
+                        ? "border-red-500 text-red-600"
+                        : "border-gray-300 focus:border-primary"
                     }
-                  }}
-                  value={wordInputs[index] || ""}
-                  onChange={(e) => handleWordInput(index, e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(index, e)}
-                  className={`
-                  bg-transparent 
-                  border-0 
-                  border-b 
-                  focus:ring-0 
-                  focus:outline-none 
-                  px-2 
-                  py-2 
-                  text-center
-                  ${isChecking
-                      ? (
-                        wordInputs[index] &&
-                        currentWords[index] &&
-                        wordInputs[index].toLowerCase() === currentWords[index].toLowerCase()
-                      )
-                        ? "border-green-500 text-green-600"
-                        : "border-red-500 text-red-600"
-                      : "border-gray-300 focus:border-primary"
-                    }
-                `}
-                  style={{ width: `${Math.max(word.length * 10, 60)}px` }} // 控制宽度在 60px 起步
-                  placeholder=""
-                  autoFocus={index === currentWordIndex}
-                  onFocus={() => setCurrentWordIndex(index)}
-                />
-                {isChecking &&
-                  (wordInputs[index] === undefined ||
-                    currentWords[index] === undefined ||
-                    wordInputs[index].toLowerCase() !== currentWords[index].toLowerCase()) && (
-                    <span className="absolute -bottom-6 left-0 text-xs text-red-500 whitespace-nowrap">
-                      {currentWords[index]}
-                    </span>
-                  )}
-              </div>
-            ))}
-          </div>
+                  `}
+                    style={{ width: `${Math.max(word.length * 10, 60)}px` }} // 控制宽度在 60px 起步
+                    placeholder=""
+                    autoFocus={index === currentWordIndex}
+                    onFocus={() => setCurrentWordIndex(index)}
+                  />
+                  {isChecking &&
+                    (wordInputs[index] === undefined ||
+                      currentWords[index] === undefined ||
+                      wordInputs[index].toLowerCase() !== currentWords[index].toLowerCase()) && (
+                      <span className="absolute -bottom-6 left-0 text-xs text-red-500 whitespace-nowrap">
+                        {currentWords[index]}
+                      </span>
+                    )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {isChecking && (
             <div className="mt-6 p-4 rounded-md bg-muted">
@@ -391,6 +402,13 @@ export function SentencePractice({
                   </>
                 )}
               </div>
+              
+              {/* 当答案正确时，显示完整句子（加粗） */}
+              {feedback.correct && (
+                <div className="my-4 text-center">
+                  <p className="text-xl font-bold">{currentSentence}</p>
+                </div>
+              )}
 
               {feedback.errors.length > 0 && (
                 <ul className="list-disc pl-6 space-y-2 text-base">
@@ -420,11 +438,11 @@ export function SentencePractice({
               // 设置成功后的延迟状态
               setSuccessDelay(true)
               
-              // 2秒后自动进入下一步
+              // 4秒后自动进入下一步
               setTimeout(() => {
                 onComplete(true, [], [])
                 setSuccessDelay(false)
-              }, 2000)
+              }, 4000)
             } else if (allCorrect && successDelay) {
               // 如果已经在延迟状态，用户可以手动加速进入下一步
               onComplete(true, [], [])

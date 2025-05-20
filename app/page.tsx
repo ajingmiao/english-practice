@@ -250,7 +250,39 @@ export default function EnglishPractice() {
   
   // 跳过复习
   const handleSkipReview = () => {
-    setMode('sentence')
+    // 推迟所有待复习项的复习时间（延迟1小时）
+    const updatedProgress = { ...userProgress };
+    const now = Date.now();
+    const oneHourMs = 60 * 60 * 1000; // 1小时的毫秒数
+    
+    // 推迟单词复习
+    Object.keys(updatedProgress.words).forEach(wordKey => {
+      const wordProgress = updatedProgress.words[wordKey];
+      if (wordProgress.nextReview <= now) {
+        wordProgress.nextReview = now + oneHourMs;
+      }
+    });
+    
+    // 推迟句子复习
+    Object.keys(updatedProgress.sentences).forEach(sentenceKey => {
+      const sentenceProgress = updatedProgress.sentences[sentenceKey];
+      if (sentenceProgress.nextReview <= now) {
+        sentenceProgress.nextReview = now + oneHourMs;
+      }
+    });
+    
+    // 保存更新后的进度
+    saveUserProgress(updatedProgress);
+    
+    // 显示提示
+    toast({
+      title: "复习已推迟",
+      description: "复习项已推迟1小时，稍后会再次提醒你。",
+      variant: "default",
+    });
+    
+    // 切换回句子练习模式
+    setMode('sentence');
   }
   
   // 移动到下一步

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Volume2, CheckCircle, AlertCircle } from "lucide-react"
 import { WordProgress, updateWordProgress } from "@/utils/spaced-repetition"
+import { getPhoneticTranscription } from "@/utils/phonetic-transcription"
 
 interface WordLearningProps {
   word: string;
@@ -20,6 +21,10 @@ export function WordLearning({ word, translation, onComplete, wordProgress }: Wo
   const [attempts, setAttempts] = useState(0)
   const [showHint, setShowHint] = useState(false)
   const [hintLevel, setHintLevel] = useState(0) // 提示级别，每次错误增加一个字母
+  
+  // 添加音效引用
+  const correctSoundRef = useRef<HTMLAudioElement | null>(null)
+  const incorrectSoundRef = useRef<HTMLAudioElement | null>(null)
   
   const inputRef = useRef<HTMLInputElement>(null)
   const checkButtonRef = useRef<HTMLButtonElement>(null)
@@ -67,12 +72,24 @@ export function WordLearning({ word, translation, onComplete, wordProgress }: Wo
     const correct = userInputNormalized === wordNormalized;
     setIsCorrect(correct)
     
+    // 播放音效
     if (correct) {
+      // 播放正确音效
+      if (correctSoundRef.current) {
+        correctSoundRef.current.currentTime = 0;
+        correctSoundRef.current.play().catch(e => console.error("播放音效失败:", e));
+      }
+      
       // Complete after a short delay to show feedback
       setTimeout(() => {
         onComplete(true)
       }, 1500)
     } else {
+      // 播放错误音效
+      if (incorrectSoundRef.current) {
+        incorrectSoundRef.current.currentTime = 0;
+        incorrectSoundRef.current.play().catch(e => console.error("播放音效失败:", e));
+      }
       // 判断用户已经输入正确的部分
       let correctChars = 0;
       for (let i = 0; i < Math.min(userInputNormalized.length, wordNormalized.length); i++) {
@@ -161,6 +178,9 @@ export function WordLearning({ word, translation, onComplete, wordProgress }: Wo
 
   return (
     <Card className="w-full">
+      {/* 添加音效元素 */}
+      <audio ref={correctSoundRef} src="/sounds/correct.mp3" preload="auto" />
+      <audio ref={incorrectSoundRef} src="/sounds/incorrect.mp3" preload="auto" />
       <CardHeader>
         <CardTitle className="flex justify-between items-center text-2xl">
           单词学习
@@ -181,6 +201,10 @@ export function WordLearning({ word, translation, onComplete, wordProgress }: Wo
       <CardContent>
         <div className="mb-6">
           <div className="flex flex-col items-center gap-4 mb-10">
+            {/* 显示单词的音标 */}
+            <div className="text-center mb-1">
+              <span className="text-slate-400 text-sm">{getPhoneticTranscription(word)}</span>
+            </div>
             <input
               ref={inputRef}
               value={userInput}
