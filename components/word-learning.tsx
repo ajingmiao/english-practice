@@ -48,10 +48,52 @@ export function WordLearning({ word, translation, onComplete, wordProgress }: Wo
 
   // Play audio for the word
   const playAudio = () => {
-    const utterance = new SpeechSynthesisUtterance(word)
-    utterance.lang = "en-US"
-    utterance.rate = 0.8
-    window.speechSynthesis.speak(utterance)
+    console.log('尝试播放单词:', word);
+    // 先播放哔声，确保声音系统工作
+    try {
+      // 创建音频上下文
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      // 设置参数
+      oscillator.type = 'sine';
+      oscillator.frequency.value = 800; // 频率
+      gainNode.gain.value = 0.1; // 音量
+      
+      // 连接节点
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      // 播放短暂的哔声
+      oscillator.start();
+      setTimeout(() => {
+        oscillator.stop();
+        // 在哔声后尝试播放语音
+        try {
+          const utterance = new SpeechSynthesisUtterance(word);
+          utterance.lang = "en-US";
+          utterance.rate = 0.8;
+          window.speechSynthesis.speak(utterance);
+          console.log('语音播放成功');
+        } catch (speechError) {
+          console.error('语音播放失败:', speechError);
+        }
+      }, 200);
+      
+      console.log('哔声播放成功');
+    } catch (error) {
+      console.error('哔声播放失败:', error);
+      // 如果哔声失败，直接尝试播放语音
+      try {
+        const utterance = new SpeechSynthesisUtterance(word);
+        utterance.lang = "en-US";
+        utterance.rate = 0.8;
+        window.speechSynthesis.speak(utterance);
+      } catch (e) {
+        console.error('直接播放语音也失败:', e);
+      }
+    }
   }
 
   // Auto-play audio when component mounts
@@ -61,6 +103,57 @@ export function WordLearning({ word, translation, onComplete, wordProgress }: Wo
     }, 500)
     return () => clearTimeout(timer)
   }, [word])
+  
+  // 使用 ref 来跟踪是否已经显示过提示
+  const hasShownToastRef = useRef(false);
+  
+  // 添加全局快捷键监听
+  useEffect(() => {
+    // 只在第一次渲染时显示提示，避免无限循环
+    if (!hasShownToastRef.current) {
+      // 设置标志位为已显示
+      hasShownToastRef.current = true;
+      
+      // 使用自定义 toast 样式
+      const toast = document.createElement('div');
+      toast.className = 'fixed top-4 right-4 bg-black bg-opacity-80 text-white p-4 rounded-md z-50';
+      toast.innerHTML = `
+        <div class="font-medium">快捷键已启用</div>
+        <div class="text-sm mt-1 text-gray-300">按 Ctrl+A 朗读单词</div>
+      `;
+      document.body.appendChild(toast);
+      
+      // 3秒后移除提示
+      setTimeout(() => {
+        if (toast.parentNode) {
+          document.body.removeChild(toast);
+        }
+      }, 3000);
+    }
+    
+    // 简单的快捷键监听函数
+    function handleKeyPress(event: KeyboardEvent) {
+      // 如果用户正在输入文本，不触发快捷键
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      
+      // 如果按下 Ctrl+A 组合键，则播放音频
+      if (event.ctrlKey && (event.key === 'a' || event.key === 'A')) {
+        console.log('检测到 Ctrl+A 组合键');
+        event.preventDefault(); // 防止浏览器默认行为
+        playAudio();
+      }
+    }
+    
+    // 直接监听 document 的 keydown 事件
+    document.addEventListener('keydown', handleKeyPress);
+    
+    // 清理函数
+    return () => {
+      document.removeEventListener('keydown', handleKeyPress);
+    };
+  }, []); // 移除依赖项，避免重新添加事件监听器
 
   // Check the user's answer
   const checkAnswer = () => {
@@ -206,32 +299,62 @@ export function WordLearning({ word, translation, onComplete, wordProgress }: Wo
               <span className="text-slate-400 text-sm">{getPhoneticTranscription(word)}</span>
             </div>
             <input
-              ref={inputRef}
-              value={userInput}
-              onChange={(e) => setUserInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className={`
-                bg-transparent 
-                border-0 
-                border-b 
-                focus:ring-0 
-                focus:outline-none 
-                px-2 
-                py-2 
-                text-center
-                text-xl
-                w-full
-                max-w-xs
-                ${isChecking
-                  ? isCorrect
-                    ? "border-green-500 text-green-600"
-                    : "border-red-500 text-red-600"
-                  : "border-gray-300 focus:border-primary"
-                }
-              `}
-              placeholder="输入单词"
-              autoFocus
-            />
+  ref={inputRef}
+  value={userInput}
+  onChange={(e) => setUserInput(e.target.value)}
+  onKeyDown={handleKeyDown}
+  className={`
+    bg-transparent 
+    border-0 
+    border-b 
+    focus:ring-0 
+    focus:outline-none 
+    px-2 
+    py-2 
+    text-center
+    text-xl
+    w-full
+    max-w-xs
+    transition-all
+    duration-300
+    ${isChecking
+      ? isCorrect
+        ? "border-green-500 text-green-600 animate-none"
+        : "border-red-500 text-red-600 shake"
+      : "border-gray-300 focus:border-primary animate-none"
+    }
+  `}
+  placeholder="输入单词"
+  autoFocus
+/>
+{/* 错误高亮部分提示 */}
+{!isCorrect && isChecking && userInput && (() => {
+  const userInputNormalized = userInput.toLowerCase().trim();
+  const wordNormalized = word.toLowerCase().trim();
+  let errorIndex = -1;
+  for (let i = 0; i < Math.min(userInputNormalized.length, wordNormalized.length); i++) {
+    if (userInputNormalized[i] !== wordNormalized[i]) {
+      errorIndex = i;
+      break;
+    }
+  }
+  if (errorIndex !== -1) {
+    return (
+      <div className="mt-2 text-red-500 text-center text-base">
+        第{errorIndex + 1}个字母有误
+        <br />
+        <span>
+          {userInput.split('').map((c, idx) =>
+            idx === errorIndex ?
+              <span key={idx} className="bg-red-200 underline underline-offset-4 rounded px-1">{c}</span> :
+              <span key={idx}>{c}</span>
+          )}
+        </span>
+      </div>
+    )
+  }
+  return null;
+})()}
           </div>
 
           {isChecking && (
@@ -266,7 +389,19 @@ export function WordLearning({ word, translation, onComplete, wordProgress }: Wo
             </div>
           )}
         </div>
-      </CardContent>
+      {/* shake 动画样式 */}
+<style jsx>{`
+@keyframes shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-4px); }
+  40%, 60% { transform: translateX(4px); }
+}
+.shake {
+  animation: shake 0.35s cubic-bezier(.36,.07,.19,.97) both;
+}
+`}</style>
+</CardContent>
       <CardFooter className="flex justify-between pt-6">
         <Button variant="outline" onClick={playAudio} className="text-base px-6 py-5">
           重新播放

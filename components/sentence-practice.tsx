@@ -66,20 +66,58 @@ export function SentencePractice({
     }, 100)
   }, [currentStep, currentWords.length, currentExercise])
 
+  // 创建一个简单的哔声函数，用于测试声音系统
+  const playBeep = () => {
+    try {
+      // 创建音频上下文
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      // 设置参数
+      oscillator.type = 'sine';
+      oscillator.frequency.value = 800; // 频率
+      gainNode.gain.value = 0.1; // 音量
+      
+      // 连接节点
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      // 播放短暂的哔声
+      oscillator.start();
+      setTimeout(() => {
+        oscillator.stop();
+        // 在哔声后尝试播放语音
+        try {
+          const utterance = new SpeechSynthesisUtterance(currentSentence);
+          utterance.lang = "en-US";
+          utterance.rate = 0.8;
+          window.speechSynthesis.speak(utterance);
+          console.log('语音播放成功');
+        } catch (speechError) {
+          console.error('语音播放失败:', speechError);
+        }
+      }, 200);
+      
+      console.log('哔声播放成功');
+    } catch (error) {
+      console.error('哔声播放失败:', error);
+    }
+  };
+  
   // Function to play audio of the current sentence
   const playAudio = () => {
-    const utterance = new SpeechSynthesisUtterance(currentSentence)
-    utterance.lang = "en-US"
-    utterance.rate = 0.8
-    window.speechSynthesis.speak(utterance)
+    console.log('尝试播放整句:', currentSentence);
+    // 先播放哔声，测试声音系统
+    playBeep();
   }
-  
+
   // 播放当前空应填单词的语音
   const playCurrentWordHint = () => {
     if (currentWordIndex < currentWords.length) {
+      console.log('尝试播放单词提示:', currentWords[currentWordIndex]);
       // 标记已使用提示
       setUsedHint(true);
-      
       // 显示提示消息，说明使用提示后不记入积分
       toast({
         title: "已使用语音提示",
@@ -87,21 +125,150 @@ export function SentencePractice({
         variant: "default",
       });
       
-      const currentWord = currentWords[currentWordIndex];
-      const utterance = new SpeechSynthesisUtterance(currentWord);
-      utterance.lang = "en-US";
-      utterance.rate = 0.7; // 稍微放慢速度，更清晰
-      window.speechSynthesis.speak(utterance);
-      
-      // 播放两次，使用户能更清晰地听到
-      setTimeout(() => {
-        const repeatUtterance = new SpeechSynthesisUtterance(currentWord);
-        repeatUtterance.lang = "en-US";
-        repeatUtterance.rate = 0.6; // 第二次播放更慢
-        window.speechSynthesis.speak(repeatUtterance);
-      }, 1000);
+      // 先播放哔声，测试声音系统
+      try {
+        // 创建音频上下文
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        // 设置参数
+        oscillator.type = 'sine';
+        oscillator.frequency.value = 600; // 频率
+        gainNode.gain.value = 0.1; // 音量
+        
+        // 连接节点
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        // 播放短暂的哔声
+        oscillator.start();
+        setTimeout(() => {
+          oscillator.stop();
+          
+          // 在哔声后尝试播放语音
+          try {
+            const currentWord = currentWords[currentWordIndex];
+            const utterance = new SpeechSynthesisUtterance(currentWord);
+            utterance.lang = "en-US";
+            utterance.rate = 0.7; // 稍微放慢速度，更清晰
+            window.speechSynthesis.speak(utterance);
+            console.log('第一次播放成功');
+          } catch (speechError) {
+            console.error('语音播放失败:', speechError);
+          }
+        }, 200);
+        
+        console.log('哔声播放成功');
+      } catch (error) {
+        console.error('哔声播放失败:', error);
+      }
+    } else {
+      console.warn('当前没有选中的单词索引:', currentWordIndex);
     }
   }
+
+  // 使用 Web Audio API 直接生成声音
+  const playTestSound = () => {
+    console.log('尝试播放测试声音');
+    try {
+      // 创建音频上下文
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      const audioContext = new AudioContext();
+      
+      // 创建振荡器和增益节点
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      // 设置振荡器参数
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(440, audioContext.currentTime); // A4 音高
+      
+      // 设置音量变化
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1);
+      
+      // 连接节点
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      // 开始播放并在 1 秒后停止
+      oscillator.start();
+      setTimeout(() => {
+        oscillator.stop();
+        console.log('测试声音播放完成');
+        
+        // 播放成功后显示提示
+        toast({
+          title: "声音系统正常",
+          description: "如果听到了声音，说明声音系统工作正常",
+          variant: "default",
+        });
+      }, 1000);
+      
+      console.log('测试声音播放开始');
+    } catch (error) {
+      console.error('播放测试声音时出错:', error);
+      
+      // 播放失败后显示错误提示
+      toast({
+        title: "声音系统异常",
+        description: "无法播放声音，请检查浏览器设置和系统音量",
+        variant: "default",
+      });
+    }
+  };
+  
+  // 使用 ref 来跟踪是否已经显示过提示
+  const hasShownToastRef = useRef(false);
+  
+  // 在组件挂载后添加快捷键监听
+  useEffect(() => {
+    // 只在第一次渲染时显示提示，避免无限循环
+    if (!hasShownToastRef.current) {
+      // 设置标志位为已显示
+      hasShownToastRef.current = true;
+      
+      // 使用 setTimeout 来延迟显示提示，避免在渲染周期内调用
+      setTimeout(() => {
+        toast({
+          title: "快捷键已启用",
+          description: "按 Ctrl+A 朗读整句，按 Ctrl+Q 朗读当前单词",
+          variant: "default",
+        });
+      }, 100);
+    }
+    
+    // 简单的快捷键监听函数
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 如果用户正在输入文本，不触发快捷键
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      
+      // 使用 Ctrl 组合键
+      if (e.ctrlKey && (e.key === 'a' || e.key === 'A')) {
+        console.log('检测到 Ctrl+A 组合键');
+        e.preventDefault(); // 防止浏览器默认行为
+        playAudio();
+        return;
+      } 
+      
+      if (e.ctrlKey && (e.key === 'q' || e.key === 'Q')) {
+        console.log('检测到 Ctrl+Q 组合键');
+        e.preventDefault(); // 防止浏览器默认行为
+        playCurrentWordHint();
+        return;
+      }
+    };
+    
+    // 监听 document 级别的键盘事件
+    document.addEventListener('keydown', handleKeyDown);
+    
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);  // 移除依赖项，避免重新添加事件监听器
 
   // Auto-play audio when step changes
   useEffect(() => {
@@ -356,6 +523,7 @@ export function SentencePractice({
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {/* 不再需要音频元素，使用 Web Audio API 直接生成声音 */}
         <div className="mb-6">
           <p className="text-xl font-medium mb-3">
             步骤 {currentStep + 1}/{currentExercise.sentences.length}
@@ -469,6 +637,14 @@ export function SentencePractice({
           >
             <HelpCircle className="h-4 w-4" />
             语音提示
+          </Button>
+          <Button 
+            variant="secondary" 
+            onClick={playTestSound} 
+            className="text-base px-4 py-5 flex items-center gap-1"
+          >
+            <Volume2 className="h-4 w-4" />
+            测试声音
           </Button>
         </div>
 
